@@ -1,0 +1,7 @@
+{
+  "name": "audio-recorder",
+  "integrations": {
+    "capacitor": {}
+  },
+  "type": "angular-standalone"
+}
