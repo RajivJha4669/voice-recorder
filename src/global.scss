@@ -35,3 +35,25 @@
 /* @import "@ionic/angular/css/palettes/dark.always.css"; */
 /* @import "@ionic/angular/css/palettes/dark.class.css"; */
 @import '@ionic/angular/css/palettes/dark.system.css';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+:root {
+  --ion-background-color: #ffffff;
+  --ion-text-color: #000000;
+}
+
+[mode="md"] {
+  --ion-background-color: #f8f9fa; // Material Design light background
+  --ion-text-color: #212529;
+  --ion-button-border-radius: 50%; // Round buttons for Android
+  --ion-card-background: #ffffff;
+  --ion-card-border-radius: 12px;
+  --ion-card-box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.dark [mode="md"] {
+  --ion-background-color: #212529;
+  --ion-text-color: #ffffff;
+  --ion-card-background: #343a40;
+}

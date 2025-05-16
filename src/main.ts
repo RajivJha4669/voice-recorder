@@ -5,6 +5,19 @@ import { IonicRouteStrategy, provideIonicAngular } from '@ionic/angular/standalo
 import { routes } from './app/app.routes';
 import { AppComponent } from './app/app.component';
 
+import { addIcons } from 'ionicons';
+import { mic, stop, pause, play, trash, sunny, moon } from 'ionicons/icons';
+
+// Register the icons
+addIcons({
+  mic,
+  stop,
+  pause,
+  play,
+  trash,
+  sunny, // For light mode
+  moon,  // For dark mode
+});
 bootstrapApplication(AppComponent, {
   providers: [
     { provide: RouteReuseStrategy, useClass: IonicRouteStrategy },

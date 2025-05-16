@@ -1,5 +1,7 @@
 import { Component } from '@angular/core';
 import { IonApp, IonRouterOutlet } from '@ionic/angular/standalone';
+import { StorageService } from './services/storage.service';
+import { ThemeService } from './services/theme.service';
 
 @Component({
   selector: 'app-root',
@@ -7,5 +9,13 @@ import { IonApp, IonRouterOutlet } from '@ionic/angular/standalone';
   imports: [IonApp, IonRouterOutlet],
 })
 export class AppComponent {
-  constructor() {}
+  constructor(
+    private themeService: ThemeService,
+    private storageService: StorageService
+  ) {}
+
+  async ngOnInit() {
+    await this.themeService.initialize();
+    await this.storageService.migrateData();
+  }
 }

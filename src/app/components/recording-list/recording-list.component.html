@@ -1,0 +1,14 @@
+<ion-list class="bg-white shadow-md rounded-xl">
+  <ion-item *ngFor="let recording of recordings" class="hover:bg-gray-100">
+    <ion-label>
+      <h2 class="font-medium">{{ recording.name }}</h2>
+      <p class="text-gray-600 text-sm">
+        {{ recording.date | date: 'medium' }} | {{ recording.duration | number: '1.0-0' }}s
+      </p>
+    </ion-label>
+    <app-audio-player [filePath]="recording.filePath"></app-audio-player>
+    <ion-button slot="end" color="danger" (click)="deleteRecording(recording.id)">
+      <ion-icon name="trash" slot="icon-only"></ion-icon>
+    </ion-button>
+  </ion-item>
+</ion-list>

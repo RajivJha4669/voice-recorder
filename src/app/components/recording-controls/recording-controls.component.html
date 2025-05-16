@@ -1,0 +1,51 @@
+<ion-card class="bg-gradient-to-r from-primary-500 dark:from-primary-600 shadow-xl text-white to-accent-600 dark:to-accent-600">
+  <ion-card-content class="p-6">
+    <div *ngIf="permissionDenied" class="mb-4 text-red-200 text-center">
+      <p *ngIf="!isWebPlatform">Microphone permission is required to record audio.</p>
+      <p *ngIf="isWebPlatform">
+        Microphone permission is required. Please allow microphone access in your browser settings.
+        <a href="https://support.google.com/chrome/answer/2693767" target="_blank" class="underline">
+          Learn how
+        </a>
+      </p>
+      <ion-button *ngIf="!isWebPlatform" color="light" (click)="openSettings()">
+        Grant Permission
+      </ion-button>
+    </div>
+    <div class="flex justify-center items-center space-x-4">
+      <ion-button
+        *ngIf="!isRecording"
+        (click)="startRecording()"
+        color="light"
+        class="rounded-full w-16 h-16"
+        [disabled]="permissionDenied"
+      >
+        <ion-icon name="mic" class="text-2xl"></ion-icon>
+      </ion-button>
+      <ion-button
+        *ngIf="isRecording"
+        (click)="stopRecording()"
+        color="danger"
+        class="rounded-full w-16 h-16"
+      >
+        <ion-icon name="stop" class="text-2xl"></ion-icon>
+      </ion-button>
+      <ion-button
+        *ngIf="isRecording && !isPaused && !isWebPlatform"
+        (click)="pauseRecording()"
+        color="warning"
+        class="rounded-full w-16 h-16"
+      >
+        <ion-icon name="pause" class="text-2xl"></ion-icon>
+      </ion-button>
+      <ion-button
+        *ngIf="isRecording && isPaused && !isWebPlatform"
+        (click)="resumeRecording()"
+        color="success"
+        class="rounded-full w-16 h-16"
+      >
+        <ion-icon name="play" class="text-2xl"></ion-icon>
+      </ion-button>
+    </div>
+  </ion-card-content>
+</ion-card>

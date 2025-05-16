@@ -1,0 +1,21 @@
+<ion-header>
+  <ion-toolbar class="bg-gradient-to-r from-primary-500 to-accent-600">
+    <ion-title class="text-white">Voice Recorder</ion-title>
+    <ion-buttons slot="end">
+      <ion-button (click)="toggleTheme()">
+        <ion-icon
+          [name]="currentTheme === 'dark' ? 'sunny' : 'moon'"
+          slot="icon-only"
+          class="text-white text-xl"
+        ></ion-icon>
+      </ion-button>
+    </ion-buttons>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content class="bg-gray-100 dark:bg-gray-900 ion-padding">
+  <div class="space-y-6 mx-auto max-w-2xl">
+    <app-recording-controls></app-recording-controls>
+    <app-recording-list></app-recording-list>
+  </div>
+</ion-content>

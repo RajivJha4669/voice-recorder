@@ -1,0 +1,11 @@
+<div class="flex items-center space-x-2">
+  <ion-button (click)="togglePlay()" color="primary" class="rounded-full w-12 h-12">
+    <ion-icon [name]="isPlaying ? 'pause' : 'play'" class="text-xl"></ion-icon>
+  </ion-button>
+  <ion-range
+    [value]="progress"
+    (ionChange)="seek($event)"
+    class="w-full"
+    color="primary"
+  ></ion-range>
+</div>
