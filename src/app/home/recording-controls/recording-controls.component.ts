@@ -24,7 +24,9 @@ import { App } from '@capacitor/app';
         <ion-text color="primary">
           <h1 class="font-bold text-2xl">{{ formatTime(currentDuration) }}</h1>
         </ion-text>
-        <ion-spinner *ngIf="isRecording && !isPaused" name="dots" color="primary"></ion-spinner>
+        <ion-text *ngIf="isRecording" color="medium">
+          <p>Restarts: {{ restartCount }}</p>
+        </ion-text>
       </div>
       <div class="flex space-x-2 controls">
         <ion-button *ngIf="!isRecording" (click)="startEmitting()" color="primary" fill="solid" [disabled]="isSaving">
@@ -75,6 +77,7 @@ export class RecordingControlsComponent implements  OnInit, OnDestroy {
   private currentFileName: string | null = null;
   private deviceInfo: DeviceInfo | null = null;
   // ================================================
+  restartCount = 0;
   constructor(private storageService: StorageService, private toastController: ToastController) {
     if (this.isAndroid) {
       ForegroundService.requestPermissions().catch((error) =>
@@ -132,6 +135,7 @@ export class RecordingControlsComponent implements  OnInit, OnDestroy {
     this.isActive = true;
     this.currentDuration = 0;
     this.startTime = Date.now();
+    this.restartCount = 0;
 
     if (this.isAndroid) {
       try {
@@ -168,6 +172,7 @@ export class RecordingControlsComponent implements  OnInit, OnDestroy {
         if (this.isActive) {
           this.currentDuration = 0;
           this.startTime = Date.now();
+          this.restartCount++;
           await this.startRecording();
         }
       }
