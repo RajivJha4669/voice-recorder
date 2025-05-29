@@ -23,8 +23,8 @@ import { LocalNotifications } from '@capacitor/local-notifications';
             <ion-text color="primary">
               <h1 class="font-bold text-2xl">{{ formatTime(currentDuration) }}</h1>
             </ion-text>
-            <ion-text [hidden]="!isRecording" color="medium">
-              <p>Restarts: {{ restartCount }}</p>
+            <ion-text color="medium">
+              <p>Restarts: {{ restartCount ||0 }}</p>
             </ion-text>
           </div>
           <div class="controls flex space-x-2">
@@ -37,7 +37,7 @@ import { LocalNotifications } from '@capacitor/local-notifications';
               Stop
             </ion-button>
             <ion-button (click)="exportSpectrogram()" color="tertiary" fill="solid" [disabled]="!canExport">
-              <ion-icon name="download" slot="start"></ion-icon>
+            <ion-icon name="download-outline" [slot]="'start'"></ion-icon>
               Export
             </ion-button>
           </div>
