@@ -1,8 +1,8 @@
 import { NgIf } from '@angular/common';
-import { Component, OnDestroy, OnInit } from '@angular/core';
+import { Component, ElementRef, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { Capacitor } from '@capacitor/core';
 import { Directory, Filesystem } from '@capacitor/filesystem';
-import { IonButton, IonCard, IonCardContent, IonIcon, IonSpinner, IonText, ToastController } from '@ionic/angular/standalone';
+import { IonButton, IonCard, IonCardContent, IonIcon, IonText, ToastController } from '@ionic/angular/standalone';
 import { VoiceRecorder } from 'capacitor-voice-recorder';
 import { interval, Observable } from 'rxjs';
 import { takeWhile } from 'rxjs/operators';
@@ -11,8 +11,7 @@ import { StorageService } from 'src/app/storage.service';
 import { v4 as uuidv4 } from 'uuid';
 import { ForegroundService } from '@capawesome-team/capacitor-android-foreground-service';
 import { Device, DeviceInfo } from '@capacitor/device';
-import { App } from '@capacitor/app';
-
+import { LocalNotifications } from '@capacitor/local-notifications';
 @Component({
   selector: 'app-recording-controls',
   // ===================================== HTML =================================================================
@@ -41,6 +40,7 @@ import { App } from '@capacitor/app';
       <ion-text *ngIf="permissionDenied" color="danger" class="mt-2">
         <p>Microphone permission is required to record audio.</p>
       </ion-text>
+       <canvas #spectrogramCanvas width="200" height="128" style="width: 100%; height: 300px; margin-top: 10px;"></canvas>
     </div>
   </ion-card-content>
 </ion-card>`,
@@ -52,12 +52,18 @@ import { App } from '@capacitor/app';
   ion-spinner {
     margin-top: 8px;
   }
+   canvas {
+      border: 1px solid #ccc;
+      display: block;
+      margin: 10px auto;
+    }
 `,
 
   standalone: true,
-  imports: [IonCard, IonCardContent, IonButton, IonIcon, IonText, NgIf, IonSpinner],
+  imports: [IonCard, IonCardContent, IonButton, IonIcon, IonText, NgIf],
 })
 export class RecordingControlsComponent implements  OnInit, OnDestroy {
+  @ViewChild('spectrogramCanvas', { static: false }) canvas!: ElementRef<HTMLCanvasElement>;
   // ================================================
   isRecording = false;
   isPaused = false;
@@ -77,6 +83,14 @@ export class RecordingControlsComponent implements  OnInit, OnDestroy {
   private currentFileName: string | null = null;
   private deviceInfo: DeviceInfo | null = null;
   // ================================================
+  private audioContext: AudioContext | null = null;
+  private spectrogramData: number[][] = [];
+  private readonly SPECTROGRAM_WIDTH = 200; // Time steps
+  private readonly SPECTROGRAM_HEIGHT = 128; // Frequency bins
+  private readonly FFT_SIZE = 2048;
+
+
+  // ====================================================
   restartCount = 0;
   constructor(private storageService: StorageService, private toastController: ToastController) {
     if (this.isAndroid) {
@@ -94,6 +108,12 @@ export class RecordingControlsComponent implements  OnInit, OnDestroy {
    // =======================================================================================================================
   async ngOnInit() {
     await this.initializeDeviceInfo();
+    this.audioContext = new AudioContext({ sampleRate: 44100 });
+    // Request notification permissions
+    const permission = await LocalNotifications.requestPermissions();
+    if (permission.display !== 'granted') {
+      await this.showToast('Notification permission required for SOS alerts', 'warning');
+    }
   }
 
   // =======================================================================================================================
@@ -144,7 +164,6 @@ export class RecordingControlsComponent implements  OnInit, OnDestroy {
           name: 'Audio Recording',
           description: 'Channel for audio recording notifications',
           importance: 4,
-
         });
         console.log("..............................");
 
@@ -177,7 +196,7 @@ export class RecordingControlsComponent implements  OnInit, OnDestroy {
         }
       }
     });
-    this.startRecording();
+  await this.startRecording();
   }
 
   // ==========================================================================================================================
@@ -242,6 +261,9 @@ export class RecordingControlsComponent implements  OnInit, OnDestroy {
         if (!result.value?.recordDataBase64) {
           throw new Error('No recording data returned');
         }
+       // Generate spectrogram before saving
+        await this.generateSpectrogram(result.value.recordDataBase64);
+         await this.classifySpectrogram();
         await this.saveRecording(result.value.recordDataBase64, this.currentDuration || 10000);
       } catch (error) {
         console.error(`Error stopping recording on ${this.deviceInfo?.platform || 'unknown'}:`, error);
@@ -252,6 +274,138 @@ export class RecordingControlsComponent implements  OnInit, OnDestroy {
         resolve(true);
       }
     });
+  }
+
+ async generateSpectrogram(base64String: string) {
+    try {
+      // Convert base64 to ArrayBuffer
+      const binaryString = atob(base64String);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      const arrayBuffer = bytes.buffer;
+
+      // Decode audio data
+      if (!this.audioContext) {
+        this.audioContext = new AudioContext({ sampleRate: 44100 });
+      }
+      const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
+
+      // Initialize spectrogram data
+      this.spectrogramData = [];
+      const duration = audioBuffer.duration * 1000; // ms
+      const stepMs = duration / this.SPECTROGRAM_WIDTH;
+      const bufferLength = this.FFT_SIZE / 2; // Number of frequency bins
+
+      // Process audio in chunks
+      for (let t = 0; t < this.SPECTROGRAM_WIDTH; t++) {
+        // Create a new OfflineAudioContext for each chunk
+        const offlineContext = new OfflineAudioContext({
+          numberOfChannels: 1,
+          length: Math.ceil((stepMs / 1000) * audioBuffer.sampleRate),
+          sampleRate: audioBuffer.sampleRate,
+        });
+
+        // Create new source and analyser for each chunk
+        const source = offlineContext.createBufferSource();
+        source.buffer = audioBuffer;
+        const analyser = offlineContext.createAnalyser();
+        analyser.fftSize = this.FFT_SIZE;
+        analyser.smoothingTimeConstant = 0;
+        source.connect(analyser);
+        analyser.connect(offlineContext.destination);
+
+        // Extract chunk at specific time
+        const startTime = (t * stepMs) / 1000;
+        const chunkDuration = stepMs / 1000;
+        source.start(0, startTime, chunkDuration);
+
+        // Render the chunk
+        await offlineContext.startRendering();
+        const dataArray = new Float32Array(bufferLength);
+        analyser.getFloatFrequencyData(dataArray);
+
+        // Normalize and store frequency data
+        const normalizedData = Array.from(dataArray)
+          .slice(0, this.SPECTROGRAM_HEIGHT)
+          .map(val => (val === -Infinity ? 0 : (val + 100) / 100)); // Handle -Infinity
+        this.spectrogramData.push(normalizedData);
+      }
+
+      // Draw spectrogram
+      this.drawSpectrogram();
+    } catch (error) {
+      console.error('Error generating spectrogram:', error);
+      await this.showToast('Failed to generate spectrogram', 'danger');
+    }
+  }
+
+
+  async classifySpectrogram() {
+    try {
+      const spectrogram = this.getSpectrogramData();
+      if (spectrogram.length === 0) {
+        await this.showToast('No spectrogram data to classify', 'warning');
+        return;
+      }
+      // Simulate emergency sound detection (since no model is available)
+      // Randomly trigger alert 30% of the time for testing
+      const score = Math.random();
+      console.log('Simulated classification score:', score);
+      if (score > 0.7) { // Adjust threshold for testing (0.7 = 30% chance)
+        await this.showToast('Emergency sound detected (simulated)!', 'danger');
+        await this.triggerSOSAlert();
+      }
+    } catch (error) {
+      console.error('Error classifying spectrogram:', error);
+      await this.showToast('Failed to classify spectrogram', 'danger');
+    }
+  }
+
+    async triggerSOSAlert() {
+    try {
+      await LocalNotifications.schedule({
+        notifications: [
+          {
+            title: 'Emergency Sound Detected!',
+            body: 'Please take action.',
+            id: Math.floor(Math.random() * 1000),
+            schedule: { at: new Date(Date.now() + 1000) },
+          },
+        ],
+      });
+      console.log('SOS alert triggered');
+    } catch (error) {
+      console.error('Error triggering SOS alert:', error);
+      await this.showToast('Failed to send SOS alert', 'danger');
+    }
+  }
+
+
+  drawSpectrogram() {
+    if (!this.canvas || !this.canvas.nativeElement.getContext('2d')) return;
+    const ctx = this.canvas.nativeElement.getContext('2d')!;
+    const width = this.canvas.nativeElement.width;
+    const height = this.canvas.nativeElement.height;
+    const imageData = ctx.createImageData(width, height);
+
+    for (let t = 0; t < this.SPECTROGRAM_WIDTH; t++) {
+      for (let f = 0; f < this.SPECTROGRAM_HEIGHT; f++) {
+        const value = this.spectrogramData[t]?.[f] || 0;
+        const pixelIndex = ((this.SPECTROGRAM_HEIGHT - f - 1) * width + t) * 4;
+        const intensity = Math.floor(value * 255);
+        imageData.data[pixelIndex] = intensity; // R
+        imageData.data[pixelIndex + 1] = 0; // G
+        imageData.data[pixelIndex + 2] = 255 - intensity; // B
+        imageData.data[pixelIndex + 3] = 255; // A
+      }
+    }
+    ctx.putImageData(imageData, 0, 0);
+  }
+
+  getSpectrogramData(): number[][] {
+    return this.spectrogramData; // For AI classification
   }
 
   // ==========================================================================================================================
@@ -354,6 +508,9 @@ export class RecordingControlsComponent implements  OnInit, OnDestroy {
     await this.clearTimer();
     if (this.recordingSubscription) {
       this.recordingSubscription.unsubscribe();
+    }
+     if (this.audioContext) {
+      await this.audioContext.close();
     }
 
   }

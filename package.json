@@ -30,6 +30,7 @@
     "@capacitor/filesystem": "^7.0.1",
     "@capacitor/haptics": "7.0.1",
     "@capacitor/keyboard": "7.0.1",
+    "@capacitor/local-notifications": "^7.0.1",
     "@capacitor/preferences": "^7.0.1",
     "@capacitor/status-bar": "7.0.1",
     "@capawesome-team/capacitor-android-foreground-service": "^7.0.1",
