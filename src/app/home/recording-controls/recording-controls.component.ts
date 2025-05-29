@@ -16,53 +16,84 @@ import { LocalNotifications } from '@capacitor/local-notifications';
   selector: 'app-recording-controls',
   // ===================================== HTML =================================================================
   template: `
-  <ion-card class="ion-padding">
-  <ion-card-content>
-    <div class="flex flex-col items-center recording-controls">
-      <div class="mb-4 timer">
-        <ion-text color="primary">
-          <h1 class="font-bold text-2xl">{{ formatTime(currentDuration) }}</h1>
-        </ion-text>
-        <ion-text *ngIf="isRecording" color="medium">
-          <p>Restarts: {{ restartCount }}</p>
-        </ion-text>
-      </div>
-      <div class="flex space-x-2 controls">
-        <ion-button *ngIf="!isRecording" (click)="startEmitting()" color="primary" fill="solid" [disabled]="isSaving">
-          <ion-icon name="mic" slot="start"></ion-icon>
-          Start
-        </ion-button>
-        <ion-button *ngIf="isRecording" (click)="stopEmitting()" color="danger" fill="solid" [disabled]="isSaving">
-          <ion-icon name="stop" slot="start"></ion-icon>
-          Stop
-        </ion-button>
-      </div>
-      <ion-text *ngIf="permissionDenied" color="danger" class="mt-2">
-        <p>Microphone permission is required to record audio.</p>
-      </ion-text>
-       <canvas #spectrogramCanvas width="200" height="128" style="width: 100%; height: 300px; margin-top: 10px;"></canvas>
-    </div>
-  </ion-card-content>
-</ion-card>`,
+ <ion-card class="ion-padding recording-card">
+      <ion-card-content>
+        <div class="recording-controls flex flex-col items-center">
+          <div class="timer mb-4">
+            <ion-text color="primary">
+              <h1 class="font-bold text-2xl">{{ formatTime(currentDuration) }}</h1>
+            </ion-text>
+            <ion-text [hidden]="!isRecording" color="medium">
+              <p>Restarts: {{ restartCount }}</p>
+            </ion-text>
+          </div>
+          <div class="controls flex space-x-2">
+            <ion-button [hidden]="isRecording" (click)="startEmitting()" color="primary" fill="solid" [disabled]="isSaving">
+              <ion-icon name="mic" slot="start"></ion-icon>
+              Start
+            </ion-button>
+            <ion-button [hidden]="!isRecording" (click)="stopEmitting()" color="danger" fill="solid" [disabled]="isSaving">
+              <ion-icon name="stop" slot="start"></ion-icon>
+              Stop
+            </ion-button>
+            <ion-button (click)="exportSpectrogram()" color="tertiary" fill="solid" [disabled]="!canExport">
+              <ion-icon name="download" slot="start"></ion-icon>
+              Export
+            </ion-button>
+          </div>
+          <ion-text [hidden]="!permissionDenied" color="danger" class="mt-2">
+            <p>Microphone permission is required to record audio.</p>
+          </ion-text>
+          <canvas #spectrogramCanvas width="200" height="128" class="canvas mt-4"></canvas>
+        </div>
+      </ion-card-content>
+    </ion-card>
+    `,
   // ===================================== CSS ===========================================================================
   styles: `
-  .recording-controls {
-    text-align: center;
-  }
-  ion-spinner {
-    margin-top: 8px;
-  }
-   canvas {
+  .recording-card {
+      max-width: 500px;
+      margin: 16px auto;
+      min-height: 400px;
+      display: flex;
+      flex-direction: column;
+    }
+    .recording-controls {
+      flex: 1;
+      justify-content: center;
+      align-items: center;
+      padding: 16px;
+    }
+    .timer {
+      min-height: 60px;
+      text-align: center;
+    }
+    .controls {
+      min-height: 48px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .canvas {
+      width: 100%;
+      max-width: 400px;
+      height: 256px;
       border: 1px solid #ccc;
+    }
+    ion-text[hidden] {
       display: block;
-      margin: 10px auto;
+      visibility: hidden;
+    }
+    ion-button[hidden] {
+      display: inline-flex;
+      visibility: hidden;
     }
 `,
 
   standalone: true,
-  imports: [IonCard, IonCardContent, IonButton, IonIcon, IonText, NgIf],
+  imports: [IonCard, IonCardContent, IonButton, IonIcon, IonText],
 })
-export class RecordingControlsComponent implements  OnInit, OnDestroy {
+export class RecordingControlsComponent implements OnInit, OnDestroy {
   @ViewChild('spectrogramCanvas', { static: false }) canvas!: ElementRef<HTMLCanvasElement>;
   // ================================================
   isRecording = false;
@@ -85,11 +116,11 @@ export class RecordingControlsComponent implements  OnInit, OnDestroy {
   // ================================================
   private audioContext: AudioContext | null = null;
   private spectrogramData: number[][] = [];
-  private readonly SPECTROGRAM_WIDTH = 200; // Time steps
-  private readonly SPECTROGRAM_HEIGHT = 128; // Frequency bins
+  private readonly SPECTROGRAM_WIDTH = 200;
+  private readonly SPECTROGRAM_HEIGHT = 128;
   private readonly FFT_SIZE = 2048;
 
-
+  canExport = false; // Controls Export button state
   // ====================================================
   restartCount = 0;
   constructor(private storageService: StorageService, private toastController: ToastController) {
@@ -105,7 +136,7 @@ export class RecordingControlsComponent implements  OnInit, OnDestroy {
     }
   }
 
-   // =======================================================================================================================
+  // =======================================================================================================================
   async ngOnInit() {
     await this.initializeDeviceInfo();
     this.audioContext = new AudioContext({ sampleRate: 44100 });
@@ -156,6 +187,7 @@ export class RecordingControlsComponent implements  OnInit, OnDestroy {
     this.currentDuration = 0;
     this.startTime = Date.now();
     this.restartCount = 0;
+    this.canExport = false; // Disable export until spectrogram is generated
 
     if (this.isAndroid) {
       try {
@@ -165,8 +197,6 @@ export class RecordingControlsComponent implements  OnInit, OnDestroy {
           description: 'Channel for audio recording notifications',
           importance: 4,
         });
-        console.log("..............................");
-
         await ForegroundService.startForegroundService({
           id: 1,
           title: 'Audio Recorder',
@@ -196,7 +226,7 @@ export class RecordingControlsComponent implements  OnInit, OnDestroy {
         }
       }
     });
-  await this.startRecording();
+    await this.startRecording();
   }
 
   // ==========================================================================================================================
@@ -261,9 +291,10 @@ export class RecordingControlsComponent implements  OnInit, OnDestroy {
         if (!result.value?.recordDataBase64) {
           throw new Error('No recording data returned');
         }
-       // Generate spectrogram before saving
+        // Generate spectrogram before saving
         await this.generateSpectrogram(result.value.recordDataBase64);
-         await this.classifySpectrogram();
+        this.canExport = this.spectrogramData.length > 0;
+        await this.classifySpectrogram();
         await this.saveRecording(result.value.recordDataBase64, this.currentDuration || 10000);
       } catch (error) {
         console.error(`Error stopping recording on ${this.deviceInfo?.platform || 'unknown'}:`, error);
@@ -276,7 +307,7 @@ export class RecordingControlsComponent implements  OnInit, OnDestroy {
     });
   }
 
- async generateSpectrogram(base64String: string) {
+  async generateSpectrogram(base64String: string) {
     try {
       // Convert base64 to ArrayBuffer
       const binaryString = atob(base64String);
@@ -363,7 +394,7 @@ export class RecordingControlsComponent implements  OnInit, OnDestroy {
     }
   }
 
-    async triggerSOSAlert() {
+  async triggerSOSAlert() {
     try {
       await LocalNotifications.schedule({
         notifications: [
@@ -381,8 +412,51 @@ export class RecordingControlsComponent implements  OnInit, OnDestroy {
       await this.showToast('Failed to send SOS alert', 'danger');
     }
   }
+  // ==========================================================================================================================async exportSpectrogram() {
+  async exportSpectrogram() {
+    if (!this.canExport || !this.canvas) {
+      await this.showToast('No spectrogram available to export', 'warning');
+      return;
+    }
+    try {
+      console.log('Exporting spectrogram...');
+      const dataUrl = this.canvas.nativeElement.toDataURL('image/png');
+      console.log('Data URL length:', dataUrl.length);
 
+      if (!dataUrl || dataUrl === 'data:,') {
+        throw new Error('Invalid canvas data URL');
+      }
 
+      // Extract base64 data (remove "data:image/png;base64," prefix)
+      const base64Data = dataUrl.split(',')[1];
+      const fileName = `spectrogram_${new Date().getTime()}.png`;
+
+      if (this.isWebPlatform) {
+        // Fallback for web: use download link
+        const link = document.createElement('a');
+        link.href = dataUrl;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        console.log('Web download triggered:', fileName);
+      } else {
+        // Mobile: save to filesystem
+        await Filesystem.writeFile({
+          path: fileName,
+          data: base64Data,
+          directory: Directory.Documents,
+        });
+        console.log('File saved to Documents:', fileName);
+      }
+
+      await this.showToast('Spectrogram saved successfully');
+    } catch (error) {
+      console.error('Error exporting spectrogram:', error);
+      await this.showToast('Failed to save spectrogram', 'danger');
+    }
+  }
+  // ==========================================================================================================================
   drawSpectrogram() {
     if (!this.canvas || !this.canvas.nativeElement.getContext('2d')) return;
     const ctx = this.canvas.nativeElement.getContext('2d')!;
@@ -509,7 +583,7 @@ export class RecordingControlsComponent implements  OnInit, OnDestroy {
     if (this.recordingSubscription) {
       this.recordingSubscription.unsubscribe();
     }
-     if (this.audioContext) {
+    if (this.audioContext) {
       await this.audioContext.close();
     }
 
