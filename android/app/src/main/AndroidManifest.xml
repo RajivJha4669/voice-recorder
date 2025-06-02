@@ -10,6 +10,8 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.INTERNET" />
 
+
+
     <!-- Declare microphone as a required feature -->
     <uses-feature android:name="android.hardware.microphone" android:required="true" />
 
