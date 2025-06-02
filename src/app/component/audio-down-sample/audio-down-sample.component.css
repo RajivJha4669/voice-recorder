@@ -1,0 +1,43 @@
+.recording-card {
+  max-width: 500px;
+  margin: 16px auto;
+  min-height: 400px;
+  display: flex;
+  flex-direction: column;
+}
+
+.recording-controls {
+  flex: 1;
+  justify-content: center;
+  align-items: center;
+  padding: 16px;
+}
+
+.timer {
+  min-height: 60px;
+  text-align: center;
+}
+
+.controls {
+  min-height: 48px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.canvas {
+  width: 100%;
+  max-width: 346px;
+  height: 128px;
+  border: 1px solid #ccc;
+}
+
+ion-text[hidden] {
+  display: block;
+  visibility: hidden;
+}
+
+ion-button[hidden] {
+  display: inline-flex;
+  visibility: hidden;
+}

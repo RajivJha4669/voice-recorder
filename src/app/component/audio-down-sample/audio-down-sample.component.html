@@ -1,0 +1,30 @@
+<ion-card class="ion-padding recording-card">
+      <ion-card-content>
+        <div class="flex flex-col items-center recording-controls">
+          <div class="mb-4 timer">
+            <ion-text color="primary">
+              <h1 class="font-bold text-2xl">{{ formatTime(currentDuration) }}</h1>
+            </ion-text>
+            <ion-text  color="medium">
+              <p>Restarts: {{ restartCount }}</p>
+            </ion-text>
+          </div>
+          <div class="flex space-x-2 controls">
+            <ion-button [hidden]="isRecording" (click)="startEmitting()" color="primary" fill="solid" [disabled]="isSaving">
+              <ion-icon name="mic" slot="start"></ion-icon>
+              Start
+            </ion-button>
+            <ion-button (click)="stopEmitting()" color="danger" fill="solid" [disabled]="isSaving">
+              <ion-icon name="stop" slot="start"></ion-icon>
+              Stop
+            </ion-button>
+          </div>
+          <app-recordings-list></app-recordings-list>
+          <ion-text [hidden]="!permissionDenied" color="danger" class="mt-2">
+            <p>Microphone permission is required to record audio.</p>
+          </ion-text>
+        </div>
+
+        <button class="mt-4" routerLink="/record">Mel Spectrogram page</button>
+      </ion-card-content>
+    </ion-card>

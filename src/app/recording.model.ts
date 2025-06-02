@@ -4,4 +4,5 @@ export interface Recording {
   filePath: string;
   date: string;
   duration: number;
+  type?: 'original' | '16kHz';
 }

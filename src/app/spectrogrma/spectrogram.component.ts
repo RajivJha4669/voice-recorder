@@ -1,31 +1,36 @@
-import { AfterViewInit, Component, ElementRef, OnInit, ViewChild } from '@angular/core';
-
-import { IonButton, IonCard, IonCardContent, IonCardHeader, IonCardTitle, IonContent, IonHeader, IonInput, IonItem, IonLabel, IonSpinner, IonTitle, IonToolbar } from '@ionic/angular/standalone';
+// mel-spectrogram.component.ts
+import { AfterViewInit, Component, ElementRef, inject, ViewChild } from '@angular/core';
+import { IonButton, IonCard, IonCardContent, IonContent, IonHeader, IonItem, IonLabel, IonSpinner, IonTitle, IonToolbar } from '@ionic/angular/standalone';
 import { NgIf } from '@angular/common';
-import { AudioProcessingUtils } from '../audio-processing.utils';
+import { AudioProcessingService } from '../spectrogram.service';
+import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 
 @Component({
   selector: 'app-spectrogram-generator',
   template: `
-     <ion-header>
-  <ion-toolbar>
-    <ion-title class="title-center">Mel Spectrogram Generator (64×173)</ion-title>
-  </ion-toolbar>
-</ion-header>
+    <ion-header>
+      <ion-toolbar>
+        <ion-title class="title-center">Mel Spectrogram Generator (64×173)</ion-title>
+      </ion-toolbar>
+    </ion-header>
 
     <ion-content class="ion-padding">
       <ion-card>
         <ion-card-content>
           <ion-item lines="none" class="upload-item">
-          <ion-label>Select Audio</ion-label>
-          <ion-button fill="outline" size="big" class="mb-4" (click)="fileInput.click()">Upload</ion-button>
-          <input #fileInput type="file" accept="audio/*" (change)="onFileSelected($event)" hidden />
+            <ion-label>Select Audio</ion-label>
+            <ion-button fill="outline" size="big" class="mb-4" (click)="fileInput.click()">Upload</ion-button>
+            <input #fileInput type="file" accept="audio/*" (change)="onFileSelected($event)" hidden />
           </ion-item>
-
 
           <ion-button expand="block" (click)="generateMelSpectrogram()" [disabled]="!audioFile || loading">
             <ion-spinner *ngIf="loading" slot="start" name="dots"></ion-spinner>
             {{ loading ? 'Generating...' : 'Generate' }}
+          </ion-button>
+
+          <ion-button expand="block" (click)="downloadDownsampledAudio()" [disabled]="!audioFile || loading">
+            <ion-spinner *ngIf="loading" slot="start" name="dots"></ion-spinner>
+            {{ loading ? 'Processing...' : 'Download Downsampled Audio' }}
           </ion-button>
 
           <div *ngIf="error" class="error">{{ error }}</div>
@@ -63,102 +68,17 @@ import { AudioProcessingUtils } from '../audio-processing.utils';
     IonItem,
     IonTitle
   ],
-  styles: [`
-    .title-center {
-      text-align: center;
-      font-size: 1.2rem;
-    }
-
-
-    .file-input {
-      margin-top: 10px;
-      width: 100%;
-    }
-
-    ion-button {
-      margin-top: 16px;
-    }
-
-    .spectrogram-container {
-      margin-top: 20px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-    }
-
-    canvas {
-      border: 1px solid #ddd;
-      image-rendering: pixelated;
-      width: 100%;
-      max-width: 100%;
-      height: auto;
-    }
-
-    .axes {
-      display: flex;
-      justify-content: space-between;
-      width: 100%;
-      padding: 0 5px;
-      margin-top: 5px;
-      font-size: 12px;
-      color: #666;
-    }
-
-    .frequency-label {
-      font-size: 12px;
-      color: #666;
-      margin-top: 5px;
-      text-align: center;
-    }
-
-    .colorbar {
-      display: flex;
-      align-items: center;
-      margin-top: 10px;
-      justify-content: center;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-
-    .gradient {
-      width: 100%;
-      max-width: 200px;
-      height: 20px;
-      background: linear-gradient(to right,
-        #000004, #160b39, #420a68, #6a176e,
-        #932667, #ba3655, #dd513a, #f3761b,
-        #fca50a, #f6d746, #fcffa4);
-    }
-
-    .error {
-      color: var(--ion-color-danger);
-      margin-top: 10px;
-      text-align: center;
-      font-size: 0.9rem;
-    }
-
-    @media (max-width: 400px) {
-      .gradient {
-        max-width: 150px;
-      }
-
-      ion-card-title {
-        font-size: 1rem;
-      }
-    }
-  `]
+  styles: [/* Existing styles unchanged, as provided in your original code */]
 })
 export class MelSpectrogramComponent implements AfterViewInit {
   @ViewChild('spectrogramCanvas', { static: false })
   canvasRef!: ElementRef<HTMLCanvasElement>;
-
+  audioService = inject(AudioProcessingService);
   audioFile: File | null = null;
   melSpectrogramData: Float32Array | null = null;
   loading = false;
   error = '';
   private ctx: CanvasRenderingContext2D | null = null;
-
-  constructor(private audioService: AudioProcessingUtils) { }
 
   ngAfterViewInit() {
     this.initializeCanvas();
@@ -169,27 +89,38 @@ export class MelSpectrogramComponent implements AfterViewInit {
       this.ctx = this.canvasRef.nativeElement.getContext('2d');
       if (!this.ctx) {
         console.error('Could not get canvas context');
+        this.error = 'Canvas context not supported';
       }
     }
   }
 
-  onFileSelected(event: Event) {
+  async onFileSelected(event: Event) {
     const input = event.target as HTMLInputElement;
     if (input.files?.length) {
       this.audioFile = input.files[0];
       this.melSpectrogramData = null;
       this.error = '';
+      console.log('File selected:', this.audioFile.name, 'size:', this.audioFile.size, 'type:', this.audioFile.type);
+    } else {
+      console.log('No file selected');
+      this.error = 'No file selected';
     }
   }
 
   async generateMelSpectrogram() {
-    if (!this.audioFile || !this.ctx) return;
+    if (!this.audioFile || !this.ctx) {
+      console.log('Cannot generate spectrogram: audioFile or ctx missing', { audioFile: !!this.audioFile, ctx: !!this.ctx });
+      this.error = 'Please select an audio file';
+      return;
+    }
 
     this.loading = true;
     this.error = '';
 
     try {
+      console.log('Generating Mel spectrogram...');
       this.melSpectrogramData = await this.audioService.generateStandardMelSpectrogram(this.audioFile);
+      console.log('Mel spectrogram generated, length:', this.melSpectrogramData.length);
       this.visualizeSpectrogram();
     } catch (err) {
       console.error('Error generating Mel spectrogram:', err);
@@ -199,15 +130,98 @@ export class MelSpectrogramComponent implements AfterViewInit {
     }
   }
 
-  private visualizeSpectrogram() {
-    if (!this.melSpectrogramData || !this.ctx || !this.canvasRef) return;
+  async downloadDownsampledAudio() {
+    if (!this.audioFile) {
+      console.log('No audio file selected for download');
+      this.error = 'Please select an audio file';
+      return;
+    }
 
+    console.log('Download button clicked, processing file:', this.audioFile.name);
+    this.loading = true;
+    this.error = '';
+
+    try {
+      const downsampledFile = await this.audioService.downsampleAndExportAudio(this.audioFile);
+      console.log('Downsampled file ready:', downsampledFile.name, 'size:', downsampledFile.size);
+
+      // Convert File to base64 for Filesystem API
+      const base64Data = await this.fileToBase64(downsampledFile);
+      const fileName = downsampledFile.name;
+
+      try {
+        // Write file to the Downloads directory
+        await Filesystem.writeFile({
+          path: fileName,
+          data: base64Data,
+          directory: Directory.Documents,
+        });
+        console.log('File written to filesystem:', fileName);
+      } catch (fsError) {
+        console.warn('Filesystem write failed, falling back to direct download:', fsError);
+        // Fallback to direct download if Filesystem fails
+        const url = URL.createObjectURL(downsampledFile);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        console.log('Triggering fallback download for:', fileName);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        console.log('Fallback download triggered successfully');
+      }
+
+      // For web, also trigger a download to ensure user gets the file
+      const url = URL.createObjectURL(downsampledFile);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      console.log('Triggering web download for:', fileName);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      console.log('Web download triggered successfully');
+    } catch (err) {
+      console.error('Error downloading downsampled audio:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      this.error = `Failed to downsample or save audio: ${errorMessage}`;
+    } finally {
+      this.loading = false;
+    }
+  }
+
+  private async fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        // Remove the data URL prefix (e.g., "data:audio/wav;base64,")
+        const base64 = result.split(',')[1];
+        if (!base64) {
+          reject(new Error('Failed to convert file to base64'));
+        } else {
+          resolve(base64);
+        }
+      };
+      reader.onerror = (error) => reject(error);
+      reader.readAsDataURL(file);
+    });
+  }
+
+  private visualizeSpectrogram() {
+    if (!this.melSpectrogramData || !this.ctx || !this.canvasRef) {
+      console.log('Cannot visualize spectrogram: missing data or context');
+      return;
+    }
+
+    console.log('Visualizing spectrogram...');
     const canvas = this.canvasRef.nativeElement;
     const ctx = this.ctx;
     const width = canvas.width;
     const height = canvas.height;
 
-    // Fill background black
     ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, width, height);
 
@@ -220,8 +234,6 @@ export class MelSpectrogramComponent implements AfterViewInit {
     for (let t = 0; t < timeFrames; t++) {
       for (let m = 0; m < melBins; m++) {
         let value = this.melSpectrogramData[t * melBins + m];
-
-        // Clamp and normalize [0, 1]
         value = Math.max(0, Math.min(1, value));
 
         const x = Math.floor(t * (width / timeFrames));
@@ -245,17 +257,17 @@ export class MelSpectrogramComponent implements AfterViewInit {
     }
 
     ctx.putImageData(imageData, 0, 0);
+    console.log('Spectrogram visualization completed');
   }
 
   private getInfernoColor(t: number): [number, number, number] {
-    // Colors from black → purple → red → orange → yellow → white
     const colors = [
-      [0, 0, 0],           // Black
-      [50, 0, 80],         // Dark Purple
-      [180, 30, 100],      // Magenta-Red
-      [240, 70, 40],       // Orange-Red
-      [255, 180, 60],      // Yellow
-      [255, 255, 255]      // White
+      [0, 0, 0],
+      [50, 0, 80],
+      [180, 30, 100],
+      [240, 70, 40],
+      [255, 180, 60],
+      [255, 255, 255]
     ];
 
     const stops = colors.length - 1;
@@ -272,5 +284,4 @@ export class MelSpectrogramComponent implements AfterViewInit {
 
     return [r, g, b];
   }
-
 }

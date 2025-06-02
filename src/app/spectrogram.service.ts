@@ -16,6 +16,9 @@ export class AudioProcessingService {
     this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({
       sampleRate: this.sampleRate
     });
+    if (this.audioContext.state === 'suspended') {
+      this.audioContext.resume().catch(err => console.error('Failed to resume AudioContext:', err));
+    }
   }
 
   async generateStandardMelSpectrogram(audioFile: File): Promise<Float32Array> {
@@ -217,6 +220,112 @@ export class AudioProcessingService {
     }
     const byteArray = new Uint8Array(byteNumbers);
     return new File([byteArray], filename, { type: mimeType });
+  }
+
+
+async downsampleAndExportAudio(audioFile: File): Promise<File> {
+    try {
+      console.log('Starting downsampleAndExportAudio for file:', audioFile.name);
+      const audioBuffer = await this.loadAudioFile(audioFile);
+      console.log('Audio buffer loaded:', audioBuffer.sampleRate, 'Hz, duration:', audioBuffer.duration, 'channels:', audioBuffer.numberOfChannels);
+      const downsampledBuffer = await this.downsampleAudioBuffer(audioBuffer);
+      console.log('Downsampled buffer:', downsampledBuffer.sampleRate, 'Hz, duration:', downsampledBuffer.duration, 'channels:', downsampledBuffer.numberOfChannels);
+      const wavBlob = await this.audioBufferToWav(downsampledBuffer);
+      console.log('WAV blob created, size:', wavBlob.size);
+      return new File([wavBlob], `downsampled_${audioFile.name}`, { type: 'audio/wav' });
+    } catch (err) {
+      console.error('Error in downsampleAndExportAudio:', err);
+      if (err instanceof Error) {
+        throw new Error(`Failed to downsample audio: ${err.message}`);
+      } else {
+        throw new Error('Failed to downsample audio: Unknown error');
+      }
+    }
+  }
+
+
+
+  private async downsampleAudioBuffer(audioBuffer: AudioBuffer): Promise<AudioBuffer> {
+    const targetSampleRate = this.sampleRate;
+    if (Math.abs(audioBuffer.sampleRate - targetSampleRate) < 0.1) {
+      console.log('No resampling needed, sample rate matches:', audioBuffer.sampleRate);
+      return audioBuffer;
+    }
+
+    try {
+      const offlineContext = new OfflineAudioContext(
+        audioBuffer.numberOfChannels,
+        Math.floor(audioBuffer.length * targetSampleRate / audioBuffer.sampleRate),
+        targetSampleRate
+      );
+      const source = offlineContext.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(offlineContext.destination);
+      source.start();
+      console.log('Starting offline rendering for resampling');
+      const renderedBuffer = await offlineContext.startRendering();
+      console.log('Offline rendering completed');
+      return renderedBuffer;
+    } catch (err) {
+      console.error('Error in downsampleAudioBuffer:', err);
+      throw new Error('Failed to resample audio');
+    }
+  }
+
+  private async audioBufferToWav(audioBuffer: AudioBuffer): Promise<Blob> {
+    try {
+      const numChannels = audioBuffer.numberOfChannels;
+      const sampleRate = audioBuffer.sampleRate;
+      const length = audioBuffer.length;
+      const bitsPerSample = 16;
+      const bytesPerSample = bitsPerSample / 8;
+      const blockAlign = numChannels * bytesPerSample;
+      const byteRate = sampleRate * blockAlign;
+      const dataSize = length * blockAlign;
+
+      // WAV file size: 44-byte header + data
+      const buffer = new ArrayBuffer(44 + dataSize);
+      const view = new DataView(buffer);
+
+      // Write WAV header
+      this.writeString(view, 0, 'RIFF'); // ChunkID
+      view.setUint32(4, 36 + dataSize, true); // ChunkSize (total size - 8)
+      this.writeString(view, 8, 'WAVE'); // Format
+      this.writeString(view, 12, 'fmt '); // Subchunk1ID
+      view.setUint32(16, 16, true); // Subchunk1Size (16 for PCM)
+      view.setUint16(20, 1, true); // AudioFormat (1 for PCM)
+      view.setUint16(22, numChannels, true); // NumChannels
+      view.setUint32(24, sampleRate, true); // SampleRate
+      view.setUint32(28, byteRate, true); // ByteRate
+      view.setUint16(32, blockAlign, true); // BlockAlign
+      view.setUint16(34, bitsPerSample, true); // BitsPerSample
+      this.writeString(view, 36, 'data'); // Subchunk2ID
+      view.setUint32(40, dataSize, true); // Subchunk2Size
+
+      // Write PCM data (interleaved for multiple channels)
+      let offset = 44;
+      for (let i = 0; i < length; i++) {
+        for (let channel = 0; channel < numChannels; channel++) {
+          const sample = audioBuffer.getChannelData(channel)[i];
+          // Clamp sample to [-1, 1] and scale to 16-bit integer
+          const value = Math.max(-1, Math.min(1, sample)) * 32767;
+          view.setInt16(offset, value, true); // Little-endian
+          offset += bytesPerSample;
+        }
+      }
+
+      console.log('WAV file created: channels=', numChannels, 'sampleRate=', sampleRate, 'dataSize=', dataSize);
+      return new Blob([buffer], { type: 'audio/wav' });
+    } catch (err) {
+      console.error('Error in audioBufferToWav:', err);
+      throw new Error('Failed to convert audio buffer to WAV');
+    }
+  }
+
+  private writeString(view: DataView, offset: number, str: string) {
+    for (let i = 0; i < str.length; i++) {
+      view.setUint8(offset + i, str.charCodeAt(i));
+    }
   }
 
 }

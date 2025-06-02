@@ -25,7 +25,7 @@ import { AudioPlayerComponent } from '../audio-player/audio-player.component';
       </ion-button>
     </div>
     <div class="mt-2">
-      <app-audio-player [recording]="recording"></app-audio-player>
+      <!-- <app-audio-player [recording]="recording"></app-audio-player> -->
     </div>
   </div>
 </ion-list>
@@ -43,20 +43,20 @@ import { AudioPlayerComponent } from '../audio-player/audio-player.component';
   }
   `,
   standalone: true,
-  imports: [AudioPlayerComponent,IonLabel,IonList,IonButton,IonIcon,DatePipe,NgIf],
+  imports: [IonLabel,IonList,IonButton,IonIcon,DatePipe,NgIf],
 })
 export class RecordingListComponent implements OnInit, OnDestroy {
   recording: Recording | void = undefined;
   private recordingsSubscription: Subscription | null = null;
 
   constructor(private storageService: StorageService, private toastController: ToastController) {}
-
   ngOnInit() {
-    this.recordingsSubscription = this.storageService.recordings$.subscribe((record: Recording | void) => {
-      console.log('Recording updated:', record);
-      this.recording = record;
+    this.recordingsSubscription = this.storageService.recordings$.subscribe((records: Recording[]) => {
+      console.log('Recordings updated:', records);
+      this.recording = records[0]; // Take the first recording if available
     });
     this.storageService.loadRecords();
+
   }
 
   async deleteRecording() {

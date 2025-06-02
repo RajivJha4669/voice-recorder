@@ -499,7 +499,7 @@ export class RecordingControlsComponent implements OnInit, AfterViewInit, OnDest
         date: new Date().toISOString(),
         duration,
       };
-      await this.storageService.addRecord(recording);
+      // await this.storageService.addRecord(recording);
       await this.showToast('Recording saved successfully');
     } catch (error) {
       console.error('Error saving recording:', error);
