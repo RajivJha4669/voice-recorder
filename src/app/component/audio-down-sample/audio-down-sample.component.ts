@@ -1,3 +1,4 @@
+// audio-down-sample.component.ts
 import { v4 as uuidv4 } from 'uuid';
 import { Component, OnInit } from '@angular/core';
 import { RouterLink } from '@angular/router';
@@ -12,14 +13,14 @@ import { Observable, interval, takeWhile } from 'rxjs';
 import { Recording } from 'src/app/recording.model';
 import { AudioProcessingService } from 'src/app/spectrogram.service';
 import { StorageService } from 'src/app/storage.service';
-import { RecordingsListComponent } from "./recordings-list.component";
+import { RecordingsListComponent } from './recordings-list.component';
 
 @Component({
   selector: 'app-audio-down-sample',
   templateUrl: './audio-down-sample.component.html',
   styleUrls: ['./audio-down-sample.component.css'],
   standalone: true,
-  imports: [IonCard, RouterLink, IonCardContent, IonButton, IonIcon, IonText, RecordingsListComponent]
+  imports: [IonCard, RouterLink, IonCardContent, IonButton, IonIcon, IonText, RecordingsListComponent,]
 })
 export class AudioDownSampleComponent implements OnInit {
   isSaving = false;
@@ -120,6 +121,7 @@ export class AudioDownSampleComponent implements OnInit {
     }
     try {
       const result = await VoiceRecorder.stopRecording();
+      console.log('Saved recording type----------->:', result.value);
       this.isRecording = false;
       await this.saveRecording(result.value.recordDataBase64, this.currentDuration || 4000);
     } catch (error) {
@@ -131,13 +133,16 @@ export class AudioDownSampleComponent implements OnInit {
   private async saveRecording(base64String: any, duration: number) {
     this.isSaving = true;
     try {
+      if (!base64String) {
+        throw new Error('Base64 string is empty');
+      }
       const timestamp = new Date().getTime();
       const originalFileName = `recording_${timestamp}_original.wav`;
       const downsampledFileName = `recording_${timestamp}_16khz.wav`;
       this.currentFileName = originalFileName;
       const directory = Directory.Documents;
+      console.log('base64String', base64String, 'duration', duration);
 
-      // Save original recording
       await Filesystem.writeFile({
         path: originalFileName,
         data: base64String,
@@ -152,13 +157,14 @@ export class AudioDownSampleComponent implements OnInit {
         type: 'original',
       };
 
-      // Downsample and save 16kHz version
-      // const downsampledBase64 = await this.audioProcessingService.downsampleAudio(base64String, 16000);
-      // await Filesystem.writeFile({
-      //   path: downsampledFileName,
-      //   data: downsampledBase64,
-      //   directory: directory,
-      // });
+      const downsampledBase64 = await this.audioProcessingService.downsampleAudio(base64String, 16000);
+      if (!downsampledBase64) {
+      }
+      await Filesystem.writeFile({
+        path: downsampledFileName,
+        data: downsampledBase64,
+        directory: directory,
+      });
       const downsampledRecording: Recording = {
         id: uuidv4(),
         name: `Recording ${new Date().toLocaleString()} (16kHz)`,
@@ -168,18 +174,17 @@ export class AudioDownSampleComponent implements OnInit {
         type: '16kHz',
       };
 
-      // Save both recordings, overwriting previous ones
+      // Save both recordings
       await this.storageService.addRecords([originalRecording, downsampledRecording]);
       await this.showToast('Both original and 16kHz recordings saved successfully');
     } catch (error) {
       console.error('Error saving recordings:', error);
-      await this.showToast('Failed to save recordings', 'danger');
-      throw error;
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      await this.showToast(`Failed to save recordings: ${errorMessage}`, 'danger');
     } finally {
       this.isSaving = false;
     }
   }
-
 
   async startEmitting(): Promise<void> {
     if (this.isWebPlatform) {
@@ -225,11 +230,12 @@ export class AudioDownSampleComponent implements OnInit {
         return;
       }
     }
+
     this.recordingSubscription = this.emitEventEvery10Seconds().subscribe(async () => {
       if (this.isRecording) {
-        console.log('10 seconds completed, stopping and restarting recording');
+        console.log('4 seconds completed, stopping and restarting recording');
         await this.stopRecording();
-        if (!this.isActive) {
+        if (this.isActive) {
           this.currentDuration = 0;
           this.startTime = Date.now();
           this.restartCount++;
@@ -241,9 +247,15 @@ export class AudioDownSampleComponent implements OnInit {
   }
 
   private startTimer() {
+    if (this.timerInterval) {
+      clearInterval(this.timerInterval);
+    }
+    this.currentDuration = 0;
+    this.startTime = Date.now();
     this.timerInterval = setInterval(() => {
       if (this.startTime !== null && !this.isPaused) {
         this.currentDuration = Date.now() - this.startTime;
+        console.log('Timer running, duration:', this.currentDuration);
       }
     }, 100);
   }

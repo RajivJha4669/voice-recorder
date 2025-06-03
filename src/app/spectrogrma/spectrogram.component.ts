@@ -143,33 +143,19 @@ export class MelSpectrogramComponent implements AfterViewInit {
 
     try {
       const downsampledFile = await this.audioService.downsampleAndExportAudio(this.audioFile);
-      console.log('Downsampled file ready:', downsampledFile.name, 'size:', downsampledFile.size);
 
-      // Convert File to base64 for Filesystem API
       const base64Data = await this.fileToBase64(downsampledFile);
       const fileName = downsampledFile.name;
 
       try {
-        // Write file to the Downloads directory
         await Filesystem.writeFile({
           path: fileName,
           data: base64Data,
           directory: Directory.Documents,
         });
-        console.log('File written to filesystem:', fileName);
       } catch (fsError) {
         console.warn('Filesystem write failed, falling back to direct download:', fsError);
-        // Fallback to direct download if Filesystem fails
-        const url = URL.createObjectURL(downsampledFile);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = fileName;
-        document.body.appendChild(link);
-        console.log('Triggering fallback download for:', fileName);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-        console.log('Fallback download triggered successfully');
+
       }
 
       // For web, also trigger a download to ensure user gets the file

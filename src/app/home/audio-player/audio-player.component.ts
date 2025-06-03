@@ -5,7 +5,6 @@ import { Capacitor } from '@capacitor/core';
 import { Directory, Filesystem } from '@capacitor/filesystem';
 import { IonButton, IonIcon, IonSpinner, ToastController } from '@ionic/angular/standalone';
 import { Subscription } from 'rxjs';
-import { AudioPlaybackService } from 'src/app/audio-playback.service';
 import { Recording } from '../../recording.model';
 
 @Component({
