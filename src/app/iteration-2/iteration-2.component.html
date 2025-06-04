@@ -8,13 +8,12 @@
             {{ formatTime(timerState.currentTime) }}
         </div>
     </div>
-    
     <div class="action-button" [class.running]="timerState.isRunning">
-        <ion-button 
+        <ion-button
             (click)="timerState.isRunning ? stopTimer() : startTimer()"
             fill="clear"
             class="round-button">
-            <ion-icon 
+            <ion-icon
                 [name]="timerState.isRunning ? 'stop' : 'play'"
                 class="action-icon">
             </ion-icon>

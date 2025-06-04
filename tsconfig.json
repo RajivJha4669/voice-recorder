@@ -8,6 +8,7 @@
     "esModuleInterop": true,
     "strict": true,
     "noImplicitOverride": true,
+    "skipLibCheck": true,
     "noPropertyAccessFromIndexSignature": true,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
@@ -19,7 +20,7 @@
     "target": "es2022",
     "module": "es2020",
     "allowSyntheticDefaultImports": true,
-    "lib": ["es2018", "dom"],
+    "lib": ["es2019", "dom"],
     "useDefineForClassFields": false
   },
   "angularCompilerOptions": {

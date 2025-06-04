@@ -34,7 +34,7 @@ export class TimerService implements OnDestroy {
     private pauseSubject = new Subject<void>();
     private timerSubscription?: Subscription;
     private isWeb: boolean;
-    
+
     private recordings: Recording[] = [];
     private recordingsSubject = new BehaviorSubject<Recording[]>([]);
     public recordings$ = this.recordingsSubject.asObservable();
@@ -86,7 +86,7 @@ export class TimerService implements OnDestroy {
         try {
             // Start recording
             await VoiceRecorder.startRecording();
-            
+
             this.updateState({
                 currentTime: 0,
                 isRunning: true,
@@ -119,7 +119,7 @@ export class TimerService implements OnDestroy {
             const timestamp = new Date().getTime();
             const fileName = `Device_${timestamp}_original.wav`;
             const fileNameDownsampled = `Device_${timestamp}_16khz.wav`;
-            
+
             if (!recordingData.value.recordDataBase64) {
                 throw new Error('No recording data available');
             }
@@ -128,7 +128,7 @@ export class TimerService implements OnDestroy {
             const originalBase64 = await this.audioUtils.convertToWav(
                 recordingData.value.recordDataBase64
             );
-            
+
             // Downsample the audio
             const downsampledBase64 = await this.downsampleService.downsampleAudio(
                 originalBase64,
@@ -179,22 +179,22 @@ export class TimerService implements OnDestroy {
         try {
             // Stop current recording and save it
             const recording = await VoiceRecorder.stopRecording();
-            
+
             await this.saveRecording(recording);
 
             this.destroy$.next();
 
-            // // Start new recording
-            // await VoiceRecorder.startRecording();
+            // Start new recording
+            await VoiceRecorder.startRecording();
 
-            // // Reset timer and increment count
-            // this.updateState({
-            //     currentTime: 0,
-            //     isRunning: true,
-            //     isPaused: false,
-            //     startCount: this.timerState.value.startCount + 1,
-            //     isRecording: true
-            // });
+            // Reset timer and increment count
+            this.updateState({
+                currentTime: 0,
+                isRunning: true,
+                isPaused: false,
+                startCount: this.timerState.value.startCount + 1,
+                isRecording: true
+            });
         } catch (error) {
             console.error('Error during reset and restart:', error);
             this.stopTimer();
@@ -294,4 +294,4 @@ export class TimerService implements OnDestroy {
             return 'Unable to determine storage location';
         }
     }
-} 
+}
