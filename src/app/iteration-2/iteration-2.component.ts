@@ -3,8 +3,8 @@ import { Component, OnDestroy, OnInit } from "@angular/core";
 import { IonButton, IonIcon, Platform, ToastController } from "@ionic/angular/standalone";
 import { Subject, Subscription } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
-import { Recording, TimerService, TimerState } from '../services/timer.service';
 import { SpectrogramService } from '../services/spectrogram.service';
+import { Recording, TimerService, TimerState } from '../services/timer.service';
 @Component({
   selector: 'app-iteration-2',
   templateUrl: './iteration-2.component.html',

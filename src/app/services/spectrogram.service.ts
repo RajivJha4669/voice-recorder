@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
+import { Directory, Filesystem } from '@capacitor/filesystem';
 import { Platform } from '@ionic/angular';
 
 @Injectable({
@@ -30,120 +30,135 @@ export class SpectrogramService {
   }
 
   computeMelSpectrogram(audioBuffer: AudioBuffer): number[][] {
-    const sampleRate = audioBuffer.sampleRate;
-    const channelData = audioBuffer.getChannelData(0);
+    try {
+      const sampleRate = audioBuffer.sampleRate;
+      const channelData = audioBuffer.getChannelData(0);
+      
+      // Fixed dimensions
+      const numMelBins = 64;    // 64 frequency bins
+      const numFrames = 173;    // 173 time bins
+      const fftSize = 1024;     // For better frequency resolution
+      
+      // Calculate hop size for approximately 4 seconds
+      const desiredDuration = 4;  // 4 seconds
+      const totalSamples = Math.min(channelData.length, sampleRate * desiredDuration);
+      const hopLength = Math.floor((totalSamples - fftSize) / (numFrames - 1));
 
-    const numMelBins = 64;
-    const numFrames = 173;
+      // Initialize mel spectrogram array [64 frequency bins][173 time bins]
+      const melSpectrogram: number[][] = Array(numMelBins).fill(0)
+        .map(() => new Array(numFrames).fill(-100));
 
-    // Choose FFT size and hop size to get close to 173 frames
-    // Let's use 512 FFT and 50% overlap (hop = 256)
-    const fftSize = 512;
-    const hopSize = Math.floor((channelData.length - fftSize) / (numFrames - 1));
-    // If hopSize < 1, audio is too short, pad with zeros
-    const paddedLength = fftSize + (numFrames - 1) * hopSize;
-    let paddedData: Float32Array;
-    if (channelData.length < paddedLength) {
-      paddedData = new Float32Array(paddedLength);
-      paddedData.set(channelData);
-      // rest is already zero
-    } else {
-      paddedData = channelData;
-    }
+      // Create mel filter bank (from low to high frequencies)
+      const melFilters = this.createMelFilterBank(sampleRate, fftSize, numMelBins);
+      const hannWindow = this.createHannWindow(fftSize);
 
-    const melFilters = this.createMelFilterBank(sampleRate, fftSize, numMelBins);
-    const window = this.createHannWindow(fftSize);
+      // Process each time frame
+      for (let frameIndex = 0; frameIndex < numFrames; frameIndex++) {
+        const startSample = frameIndex * hopLength;
+        const frame = new Float32Array(fftSize);
+        
+        // Apply Hann window
+        let frameEnergy = 0;
+        for (let i = 0; i < fftSize; i++) {
+          if (startSample + i < channelData.length) {
+            frame[i] = channelData[startSample + i] * hannWindow[i];
+            frameEnergy += frame[i] * frame[i];
+          }
+        }
 
-    const melSpectrogram: number[][] = [];
-    for (let frameIdx = 0; frameIdx < numFrames; frameIdx++) {
-      const start = frameIdx * hopSize;
-      const frame = Array.from(paddedData.slice(start, start + fftSize));
-      if (frame.length < fftSize) {
-        // pad frame with zeros
-        frame.push(...Array(fftSize - frame.length).fill(0));
+        // Skip if frame is silent
+        if (frameEnergy < 1e-8) continue;
+
+        // Compute FFT
+        const spectrum = this.computeFFT(Array.from(frame));
+        
+        // Compute magnitude spectrum
+        const magnitudeSpectrum = new Array(spectrum.length / 2);
+        for (let i = 0; i < spectrum.length / 2; i++) {
+          magnitudeSpectrum[i] = Math.sqrt(spectrum[i] * spectrum[i]);
+        }
+        
+        // Apply mel filterbank and convert to dB
+        const melEnergies = this.applyMelFilterBank(magnitudeSpectrum, melFilters);
+        
+        // Store in mel spectrogram (frequency bins from low to high)
+        for (let melBin = 0; melBin < numMelBins; melBin++) {
+          const energy = melEnergies[melBin];
+          melSpectrogram[melBin][frameIndex] = 
+            energy > 0 ? 20 * Math.log10(energy) : -100;
+        }
       }
-      const windowedFrame = frame.map((val, idx) => val * window[idx]);
-      const spectrum = this.computeFFT(windowedFrame);
-      const melEnergies = this.applyMelFilterBank(spectrum, melFilters);
-      melSpectrogram.push(melEnergies.map(energy => {
-        const val = Math.max(energy, 1e-10);
-        return isNaN(val) || val <= 0 ? -10 : Math.log10(val);
-      }));
-    }
 
-    // melSpectrogram: [numFrames][numMelBins] → transpose to [numMelBins][numFrames]
-    const melSpectrogramT: number[][] = [];
-    for (let melBin = 0; melBin < numMelBins; melBin++) {
-      melSpectrogramT[melBin] = [];
-      for (let frameIdx = 0; frameIdx < numFrames; frameIdx++) {
-        melSpectrogramT[melBin][frameIdx] = melSpectrogram[frameIdx][melBin];
-      }
+      return melSpectrogram;
+    } catch (error) {
+      console.error('Error computing mel spectrogram:', error);
+      return Array(64).fill(0).map(() => Array(173).fill(-100));
     }
-    return melSpectrogramT; // shape: [64][173]
   }
 
   renderMelSpectrogram(spectrogram: number[][], canvas: HTMLCanvasElement): void {
     const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      console.error('Canvas context not available');
-      return;
-    }
+    if (!ctx) return;
 
-    const timeSteps = spectrogram.length;
-    const melBins = spectrogram[0]?.length || 0;
-    if (timeSteps === 0 || melBins === 0) {
-      console.error('Invalid spectrogram dimensions: timeSteps=', timeSteps, 'melBins=', melBins);
-      return;
-    }
+    const timeSteps = spectrogram[0]?.length || 0;  // 173 columns
+    const melBins = spectrogram.length;             // 64 rows
 
-    // Set canvas size
-    canvas.width = 800;
-    canvas.height = 320;
+    // Set width based on time bins (approximately 200px per second for 4 seconds)
+    canvas.width = timeSteps * (800/173);  // Maintains exact proportion to time bins
+    canvas.height = 320;  // Height for good frequency bin visibility
 
-    // Clear the canvas
+    // Clear canvas
     ctx.fillStyle = 'black';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     const imageData = ctx.createImageData(canvas.width, canvas.height);
-    const flattened = spectrogram.reduce((acc, curr) => acc.concat(curr), []);
-    const validValues = flattened.filter(val => !isNaN(val) && isFinite(val));
-    const maxVal = validValues.length > 0 ? Math.max(...validValues) : 0;
-    const minVal = validValues.length > 0 ? Math.min(...validValues) : 0;
 
-    if (validValues.length === 0) {
-      console.error('No valid spectrogram values');
-      ctx.fillStyle = 'black';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // Find valid range for better contrast
+    let maxVal = -Infinity;
+    let minVal = Infinity;
+    
+    for (let i = 0; i < melBins; i++) {
+      for (let j = 0; j < timeSteps; j++) {
+        const val = spectrogram[i][j];
+        if (val > -50 && val < 100) {  // Reasonable dB range
+          maxVal = Math.max(maxVal, val);
+          minVal = Math.min(minVal, val);
+        }
+      }
+    }
+
+    if (!isFinite(maxVal) || !isFinite(minVal)) {
       return;
     }
 
-    console.log('Rendering spectrogram: width=', canvas.width, 'height=', canvas.height, 'minVal=', minVal, 'maxVal=', maxVal);
+    // Set dynamic range
+    const dynamicRange = 50;  // dB
+    minVal = maxVal - dynamicRange;
 
-    // Improved rendering with continuous sampling
+    // Render spectrogram
     for (let x = 0; x < canvas.width; x++) {
-      // Map x to a continuous position in timeSteps
-      const t = (x / (canvas.width - 1)) * (timeSteps - 1);
-      const srcX1 = Math.floor(t);
-      const srcX2 = Math.min(srcX1 + 1, timeSteps - 1);
-      const frac = t - srcX1;
-
+      const timeIndex = Math.floor((x / canvas.width) * timeSteps);
+      
       for (let y = 0; y < canvas.height; y++) {
-        // Map y to mel bins
-        const srcY = Math.floor((y / canvas.height) * melBins);
-        const melBinIndex = melBins - srcY - 1; // Flip y for correct frequency orientation
+        // Invert y-axis so low frequencies are at the bottom
+        const melIndex = melBins - 1 - Math.floor((y / canvas.height) * melBins);
+        
+        let value = spectrogram[melIndex][timeIndex];
+        
+        // Normalize value
+        let intensity = 0;
+        if (value > minVal) {
+          intensity = Math.min(1, (value - minVal) / dynamicRange);
+          intensity = Math.pow(intensity, 0.5);  // Gamma correction
+        }
 
-        // Interpolate between two time steps for smoother rendering
-        const value1 = spectrogram[srcX1][melBinIndex];
-        const value2 = spectrogram[srcX2][melBinIndex];
-        const value = value1 + frac * (value2 - value1);
-
-        const normalizedValue = isNaN(value) || !isFinite(value) ? 0 : (value - minVal) / (maxVal - minVal) || 0;
         const idx = (y * canvas.width + x) * 4;
-        const color = this.valueToColor(normalizedValue);
-        imageData.data[idx] = color.r;
-        imageData.data[idx + 1] = color.g;
-        imageData.data[idx + 2] = color.b;
-        imageData.data[idx + 3] = 255;
+        const color = this.getSpectrogramColor(intensity);
+        
+        imageData.data[idx] = color[0];     // R
+        imageData.data[idx + 1] = color[1]; // G
+        imageData.data[idx + 2] = color[2]; // B
+        imageData.data[idx + 3] = 255;      // A
       }
     }
 
@@ -186,26 +201,50 @@ export class SpectrogramService {
   }
 
   private createMelFilterBank(sampleRate: number, fftSize: number, numFilters: number): number[][] {
-    const melMin = 0;
-    const melMax = this.hzToMel(sampleRate / 2);
-    const melPoints = new Array(numFilters + 2);
-    for (let i = 0; i < melPoints.length; i++) {
-      melPoints[i] = this.melToHz(melMin + (i * (melMax - melMin)) / (numFilters + 1));
-    }
+    try {
+      // Convert frequencies to mel scale
+      const fMax = sampleRate / 2;
+      const melMax = this.hzToMel(fMax);
+      const melMin = this.hzToMel(20); // Start from 20 Hz
+      const deltaMel = (melMax - melMin) / (numFilters + 1);
 
-    const bins = melPoints.map(mel => Math.floor((fftSize + 1) * mel / sampleRate));
-    const filters: number[][] = [];
-    for (let i = 1; i < melPoints.length - 1; i++) {
-      const filter = new Array(fftSize / 2);
-      for (let j = 0; j < fftSize / 2; j++) {
-        if (j < bins[i - 1]) filter[j] = 0;
-        else if (j <= bins[i]) filter[j] = (j - bins[i - 1]) / (bins[i] - bins[i - 1]);
-        else if (j <= bins[i + 1]) filter[j] = (bins[i + 1] - j) / (bins[i + 1] - bins[i]);
-        else filter[j] = 0;
+      // Generate mel points
+      const melPoints = new Array(numFilters + 2);
+      for (let i = 0; i < melPoints.length; i++) {
+        melPoints[i] = this.melToHz(melMin + i * deltaMel);
       }
-      filters.push(filter);
+
+      // Convert frequencies to FFT bins
+      const bins = melPoints.map(freq => 
+        Math.min(Math.floor((fftSize + 1) * freq / sampleRate), fftSize/2));
+
+      // Create triangular filters
+      const filters: number[][] = new Array(numFilters);
+      for (let i = 0; i < numFilters; i++) {
+        filters[i] = new Array(fftSize/2).fill(0);
+        
+        for (let j = bins[i]; j < bins[i + 2]; j++) {
+          if (j < bins[i + 1]) {
+            // Upward slope
+            filters[i][j] = (j - bins[i]) / (bins[i + 1] - bins[i]);
+          } else {
+            // Downward slope
+            filters[i][j] = (bins[i + 2] - j) / (bins[i + 2] - bins[i + 1]);
+          }
+        }
+
+        // Normalize the filter
+        const filterSum = filters[i].reduce((sum, val) => sum + val, 0);
+        if (filterSum > 0) {
+          filters[i] = filters[i].map(val => val / filterSum);
+        }
+      }
+
+      return filters;
+    } catch (error) {
+      console.error('Error creating mel filter bank:', error);
+      return Array(numFilters).fill(Array(Math.floor(fftSize/2)).fill(0));
     }
-    return filters;
   }
 
   private hzToMel(hz: number): number {
@@ -265,44 +304,56 @@ export class SpectrogramService {
   }
 
   private applyMelFilterBank(spectrum: number[], filters: number[][]): number[] {
-    const energies = new Array(filters.length).fill(0);
-    for (let i = 0; i < filters.length; i++) {
-      for (let j = 0; j < spectrum.length; j++) {
-        const value = spectrum[j] * filters[i][j];
-        energies[i] += isNaN(value) ? 0 : value;
+    const numFilters = filters.length;
+    const melEnergies = new Array(numFilters).fill(0);
+
+    try {
+      // Apply each mel filter
+      for (let filterIndex = 0; filterIndex < numFilters; filterIndex++) {
+        let energy = 0;
+        const filter = filters[filterIndex];
+        
+        // Compute weighted sum
+        for (let freqBin = 0; freqBin < Math.min(spectrum.length, filter.length); freqBin++) {
+          energy += spectrum[freqBin] * filter[freqBin];
+        }
+        
+        melEnergies[filterIndex] = Math.max(energy, 1e-10);
       }
+    } catch (error) {
+      console.error('Error in mel filter bank application:', error);
     }
-    return energies;
+
+    return melEnergies;
   }
 
-  private valueToColor(value: number): { r: number; g: number; b: number } {
-    const [r, g, b] = this.getInfernoColor(value);
-    return { r, g, b };
-  }
+  private getSpectrogramColor(intensity: number): [number, number, number] {
+    if (intensity <= 0.01) {  // True silence threshold
+      return [0, 0, 0];
+    }
 
-  private getInfernoColor(t: number): [number, number, number] {
+    // Define colors for gradient
     const colors = [
-      [0, 0, 0],
-      [50, 0, 80],
-      [180, 30, 100],
-      [240, 70, 40],
-      [255, 180, 60],
-      [255, 255, 255]
+      [0, 0, 0],        // Black
+      [128, 0, 0],      // Dark red
+      [255, 0, 0],      // Bright red
+      [255, 100, 0],    // Red-orange
+      [255, 170, 0]     // Orange
     ];
 
-    const stops = colors.length - 1;
-    const scaledT = t * stops;
-    const idx = Math.floor(scaledT);
-    const frac = scaledT - idx;
+    const index = (colors.length - 1) * intensity;
+    const lowerIndex = Math.floor(index);
+    const upperIndex = Math.min(colors.length - 1, lowerIndex + 1);
+    const blend = index - lowerIndex;
 
-    const c1 = colors[Math.min(idx, stops - 1)];
-    const c2 = colors[Math.min(idx + 1, stops)];
+    const c1 = colors[lowerIndex];
+    const c2 = colors[upperIndex];
 
-    const r = Math.round(c1[0] + frac * (c2[0] - c1[0]));
-    const g = Math.round(c1[1] + frac * (c2[1] - c1[1]));
-    const b = Math.round(c1[2] + frac * (c2[2] - c1[2]));
-
-    return [r, g, b];
+    return [
+      Math.round(c1[0] * (1 - blend) + c2[0] * blend),
+      Math.round(c1[1] * (1 - blend) + c2[1] * blend),
+      Math.round(c1[2] * (1 - blend) + c2[2] * blend)
+    ];
   }
 
   closeAudioContext(): void {
