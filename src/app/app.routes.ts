@@ -1,6 +1,7 @@
 import { Routes } from '@angular/router';
-import { MelSpectrogramComponent } from './spectrogrma/spectrogram.component';
 import { AudioDownSampleComponent } from './component/audio-down-sample/audio-down-sample.component';
+import { Iteration2Component } from './iteration-2/iteration-2.component';
+import { MelSpectrogramComponent } from './spectrogrma/spectrogram.component';
 
 export const routes: Routes = [
   {
@@ -10,12 +11,16 @@ export const routes: Routes = [
   ,
   {
     path: '',
-    redirectTo: 'down-sample',
+    redirectTo: 'iteration-2',
     pathMatch: 'full',
   },
   {
     path: 'record',
     component: MelSpectrogramComponent,
+  },
+  {
+    path: 'iteration-2',
+    component: Iteration2Component,
   },
   {
     path: 'down-sample',
