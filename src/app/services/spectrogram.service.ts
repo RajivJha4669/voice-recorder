@@ -7,6 +7,9 @@ import { Platform } from '@ionic/angular';
 })
 export class SpectrogramService {
   private audioContext: AudioContext | null = null;
+  private readonly TARGET_SAMPLE_RATE = 16000; // 16kHz
+  private readonly TIME_SPAN = 4; // 4 seconds
+  private readonly SCALE = 0.5;
 
   constructor(private platform: Platform) {
     this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -22,16 +25,33 @@ export class SpectrogramService {
       throw new Error('AudioContext not initialized');
     }
     try {
-      return await this.audioContext.decodeAudioData(bytes.buffer);
+      const audioBuffer = await this.audioContext.decodeAudioData(bytes.buffer);
+      // Resample if needed
+      if (audioBuffer.sampleRate !== this.TARGET_SAMPLE_RATE) {
+        return await this.resampleBuffer(audioBuffer, this.TARGET_SAMPLE_RATE);
+      }
+      return audioBuffer;
     } catch (error) {
       console.error('Audio decode error:', error);
       throw error;
     }
   }
 
+  private async resampleBuffer(audioBuffer: AudioBuffer, targetSampleRate: number): Promise<AudioBuffer> {
+    const offlineContext = new OfflineAudioContext(
+      1, // mono
+      Math.ceil(audioBuffer.duration * targetSampleRate),
+      targetSampleRate
+    );
+    const source = offlineContext.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(offlineContext.destination);
+    source.start();
+    return await offlineContext.startRendering();
+  }
+
   computeMelSpectrogram(audioBuffer: AudioBuffer): number[][] {
     try {
-      const sampleRate = audioBuffer.sampleRate;
       const channelData = audioBuffer.getChannelData(0);
       
       // Fixed dimensions
@@ -39,9 +59,8 @@ export class SpectrogramService {
       const numFrames = 173;    // 173 time bins
       const fftSize = 1024;     // For better frequency resolution
       
-      // Calculate hop size for approximately 4 seconds
-      const desiredDuration = 4;  // 4 seconds
-      const totalSamples = Math.min(channelData.length, sampleRate * desiredDuration);
+      // Calculate samples for exactly 4 seconds
+      const totalSamples = Math.min(channelData.length, this.TARGET_SAMPLE_RATE * this.TIME_SPAN);
       const hopLength = Math.floor((totalSamples - fftSize) / (numFrames - 1));
 
       // Initialize mel spectrogram array [64 frequency bins][173 time bins]
@@ -49,7 +68,7 @@ export class SpectrogramService {
         .map(() => new Array(numFrames).fill(-100));
 
       // Create mel filter bank (from low to high frequencies)
-      const melFilters = this.createMelFilterBank(sampleRate, fftSize, numMelBins);
+      const melFilters = this.createMelFilterBank(this.TARGET_SAMPLE_RATE, fftSize, numMelBins);
       const hannWindow = this.createHannWindow(fftSize);
 
       // Process each time frame
@@ -103,9 +122,14 @@ export class SpectrogramService {
     const timeSteps = spectrogram[0]?.length || 0;  // 173 columns
     const melBins = spectrogram.length;             // 64 rows
 
-    // Set width based on time bins (approximately 200px per second for 4 seconds)
-    canvas.width = timeSteps * (800/173);  // Maintains exact proportion to time bins
-    canvas.height = 320;  // Height for good frequency bin visibility
+    // Calculate scale based on window height
+    const baseHeight = 320;
+    const windowHeight = window.innerHeight;
+    const heightScale = windowHeight / baseHeight;
+
+    // Set width based on time bins and dynamic scale
+    canvas.width = timeSteps * (800/173) * heightScale;
+    canvas.height = windowHeight;
 
     // Clear canvas
     ctx.fillStyle = 'black';
@@ -329,16 +353,18 @@ export class SpectrogramService {
 
   private getSpectrogramColor(intensity: number): [number, number, number] {
     if (intensity <= 0.01) {  // True silence threshold
-      return [0, 0, 0];
+      return [0, 0, 0];       // Black
     }
 
-    // Define colors for gradient
+    // Define colors for gradient (from low to high intensity)
     const colors = [
-      [0, 0, 0],        // Black
-      [128, 0, 0],      // Dark red
-      [255, 0, 0],      // Bright red
-      [255, 100, 0],    // Red-orange
-      [255, 170, 0]     // Orange
+      [0, 0, 0],         // Black
+      [48, 0, 96],       // Deep Purple
+      [112, 0, 192],     // Bright Purple
+      [192, 0, 128],     // Purple-Pink
+      [255, 48, 64],     // Pink-Red
+      [255, 96, 32],     // Red-Orange
+      [255, 160, 16]     // Bright Orange
     ];
 
     const index = (colors.length - 1) * intensity;
