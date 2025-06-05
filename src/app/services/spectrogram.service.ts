@@ -33,12 +33,12 @@ export class SpectrogramService {
     try {
       const sampleRate = audioBuffer.sampleRate;
       const channelData = audioBuffer.getChannelData(0);
-      
+
       // Fixed dimensions
       const numMelBins = 64;    // 64 frequency bins
       const numFrames = 173;    // 173 time bins
       const fftSize = 1024;     // For better frequency resolution
-      
+
       // Calculate hop size for approximately 4 seconds
       const desiredDuration = 4;  // 4 seconds
       const totalSamples = Math.min(channelData.length, sampleRate * desiredDuration);
@@ -56,7 +56,7 @@ export class SpectrogramService {
       for (let frameIndex = 0; frameIndex < numFrames; frameIndex++) {
         const startSample = frameIndex * hopLength;
         const frame = new Float32Array(fftSize);
-        
+
         // Apply Hann window
         let frameEnergy = 0;
         for (let i = 0; i < fftSize; i++) {
@@ -71,20 +71,20 @@ export class SpectrogramService {
 
         // Compute FFT
         const spectrum = this.computeFFT(Array.from(frame));
-        
+
         // Compute magnitude spectrum
         const magnitudeSpectrum = new Array(spectrum.length / 2);
         for (let i = 0; i < spectrum.length / 2; i++) {
           magnitudeSpectrum[i] = Math.sqrt(spectrum[i] * spectrum[i]);
         }
-        
+
         // Apply mel filterbank and convert to dB
         const melEnergies = this.applyMelFilterBank(magnitudeSpectrum, melFilters);
-        
+
         // Store in mel spectrogram (frequency bins from low to high)
         for (let melBin = 0; melBin < numMelBins; melBin++) {
           const energy = melEnergies[melBin];
-          melSpectrogram[melBin][frameIndex] = 
+          melSpectrogram[melBin][frameIndex] =
             energy > 0 ? 20 * Math.log10(energy) : -100;
         }
       }
@@ -116,11 +116,11 @@ export class SpectrogramService {
     // Find valid range for better contrast
     let maxVal = -Infinity;
     let minVal = Infinity;
-    
+
     for (let i = 0; i < melBins; i++) {
       for (let j = 0; j < timeSteps; j++) {
         const val = spectrogram[i][j];
-        if (val > -50 && val < 100) {  // Reasonable dB range
+        if (val > -50 && val < 100) {  // Reasonable dB
           maxVal = Math.max(maxVal, val);
           minVal = Math.min(minVal, val);
         }
@@ -138,13 +138,13 @@ export class SpectrogramService {
     // Render spectrogram
     for (let x = 0; x < canvas.width; x++) {
       const timeIndex = Math.floor((x / canvas.width) * timeSteps);
-      
+
       for (let y = 0; y < canvas.height; y++) {
         // Invert y-axis so low frequencies are at the bottom
         const melIndex = melBins - 1 - Math.floor((y / canvas.height) * melBins);
-        
+
         let value = spectrogram[melIndex][timeIndex];
-        
+
         // Normalize value
         let intensity = 0;
         if (value > minVal) {
@@ -154,7 +154,7 @@ export class SpectrogramService {
 
         const idx = (y * canvas.width + x) * 4;
         const color = this.getSpectrogramColor(intensity);
-        
+
         imageData.data[idx] = color[0];     // R
         imageData.data[idx + 1] = color[1]; // G
         imageData.data[idx + 2] = color[2]; // B
@@ -215,14 +215,14 @@ export class SpectrogramService {
       }
 
       // Convert frequencies to FFT bins
-      const bins = melPoints.map(freq => 
+      const bins = melPoints.map(freq =>
         Math.min(Math.floor((fftSize + 1) * freq / sampleRate), fftSize/2));
 
       // Create triangular filters
       const filters: number[][] = new Array(numFilters);
       for (let i = 0; i < numFilters; i++) {
         filters[i] = new Array(fftSize/2).fill(0);
-        
+
         for (let j = bins[i]; j < bins[i + 2]; j++) {
           if (j < bins[i + 1]) {
             // Upward slope
@@ -312,12 +312,12 @@ export class SpectrogramService {
       for (let filterIndex = 0; filterIndex < numFilters; filterIndex++) {
         let energy = 0;
         const filter = filters[filterIndex];
-        
+
         // Compute weighted sum
         for (let freqBin = 0; freqBin < Math.min(spectrum.length, filter.length); freqBin++) {
           energy += spectrum[freqBin] * filter[freqBin];
         }
-        
+
         melEnergies[filterIndex] = Math.max(energy, 1e-10);
       }
     } catch (error) {
