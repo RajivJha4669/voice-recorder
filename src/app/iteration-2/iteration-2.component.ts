@@ -5,6 +5,7 @@ import { Subject, Subscription } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { SpectrogramService } from '../services/spectrogram.service';
 import { Recording, TimerService, TimerState } from '../services/timer.service';
+import { RouterLink } from '@angular/router';
 @Component({
   selector: 'app-iteration-2',
   templateUrl: './iteration-2.component.html',
@@ -13,6 +14,7 @@ import { Recording, TimerService, TimerState } from '../services/timer.service';
     CommonModule,
     IonButton,
     IonIcon,
+    RouterLink
   ],
   styleUrls: ['./iteration-2.component.scss']
 })
@@ -65,10 +67,12 @@ export class Iteration2Component implements OnInit, OnDestroy {
       if (this.platform.is('hybrid')) {
         // Mobile: Save to device storage
         const imagePath = await this.spectrogramService.saveCanvasAsPng(this.offscreenCanvas, recording.id, this.platform);
+        await this.spectrogramService.saveMelSpectrogramAsTxt(melSpectrogram, recording.id, this.platform);
         await this.showToast(`Spectrogram image saved to device storage`);
       } else {
         // Web: Download to user's downloads folder
         await this.spectrogramService.saveCanvasAsPng(this.offscreenCanvas, recording.id, this.platform);
+        await this.spectrogramService.saveMelSpectrogramAsTxt(melSpectrogram, recording.id, this.platform);
         await this.showToast('Spectrogram image downloaded successfully');
       }
     } catch (error) {

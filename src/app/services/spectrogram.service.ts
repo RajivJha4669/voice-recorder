@@ -58,7 +58,7 @@ export class SpectrogramService {
       const numMelBins = 64;    // 64 frequency bins
       const numFrames = 173;    // 173 time bins
       const fftSize = 1024;     // For better frequency resolution
-      
+
       // Calculate samples for exactly 4 seconds
       const totalSamples = Math.min(channelData.length, this.TARGET_SAMPLE_RATE * this.TIME_SPAN);
       const hopLength = Math.floor((totalSamples - fftSize) / (numFrames - 1));
@@ -107,6 +107,7 @@ export class SpectrogramService {
             energy > 0 ? 20 * Math.log10(energy) : -100;
         }
       }
+      console.log(melSpectrogram);
 
       return melSpectrogram;
     } catch (error) {
@@ -128,7 +129,7 @@ export class SpectrogramService {
     const heightScale = windowHeight / baseHeight;
 
     // Set width based on time bins and dynamic scale
-    canvas.width = timeSteps * (800/173) * heightScale;
+    canvas.width = timeSteps * (800 / 173) * heightScale;
     canvas.height = windowHeight;
 
     // Clear canvas
@@ -216,6 +217,42 @@ export class SpectrogramService {
     }
   }
 
+  /**
+   * Save the mel spectrogram array as a .txt file (CSV format)
+   * @param melSpectrogram The 2D array to save
+   * @param recordingId The recording identifier for the filename
+   * @param platform The Platform object
+   */
+  async saveMelSpectrogramAsTxt(melSpectrogram: number[][], recordingId: string, platform: Platform) {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `melspectrogram_${recordingId}_${timestamp}.txt`;
+    // Convert 2D array to CSV string
+    const txtContent = melSpectrogram.map(row => JSON.stringify(row)).join('\n');
+
+    if (platform.is('hybrid')) {
+      try {
+        await Filesystem.writeFile({
+          path: filename,
+          data: txtContent,
+          directory: Directory.Documents,
+
+        });
+        console.log(`Mel spectrogram saved as ${filename}`);
+      } catch (err) {
+        console.error('Error saving mel spectrogram txt:', err);
+      }
+    } else {
+      // Web download
+      const blob = new Blob([txtContent], { type: 'text/plain' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  }
+
   private createHannWindow(size: number): number[] {
     const window = new Array(size);
     for (let i = 0; i < size; i++) {
@@ -240,12 +277,12 @@ export class SpectrogramService {
 
       // Convert frequencies to FFT bins
       const bins = melPoints.map(freq =>
-        Math.min(Math.floor((fftSize + 1) * freq / sampleRate), fftSize/2));
+        Math.min(Math.floor((fftSize + 1) * freq / sampleRate), fftSize / 2));
 
       // Create triangular filters
       const filters: number[][] = new Array(numFilters);
       for (let i = 0; i < numFilters; i++) {
-        filters[i] = new Array(fftSize/2).fill(0);
+        filters[i] = new Array(fftSize / 2).fill(0);
 
         for (let j = bins[i]; j < bins[i + 2]; j++) {
           if (j < bins[i + 1]) {
@@ -267,7 +304,7 @@ export class SpectrogramService {
       return filters;
     } catch (error) {
       console.error('Error creating mel filter bank:', error);
-      return Array(numFilters).fill(Array(Math.floor(fftSize/2)).fill(0));
+      return Array(numFilters).fill(Array(Math.floor(fftSize / 2)).fill(0));
     }
   }
 

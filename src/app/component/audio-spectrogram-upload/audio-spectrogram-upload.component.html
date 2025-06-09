@@ -1,0 +1,47 @@
+<ion-content>
+  <ion-card class="shadow-md px-3 py-12">
+    <!-- Header with back button and title -->
+    <ion-card-header class="mb-4 p-0">
+      <div class="flex items-center">
+        <ion-button fill="clear" routerLink="/" class="flex items-center space-x-1">
+          <ion-icon name="arrow-back-outline"></ion-icon>
+        </ion-button>
+        <ion-card-title class="font-semibold text-base text-right">
+          Mel Spectrogram Generator
+        </ion-card-title>
+      </div>
+    </ion-card-header>
+
+    <!-- Main content -->
+    <ion-card-content class="p-0">
+      <div class="flex flex-col space-y-4">
+
+        <!-- File input -->
+        <div>
+          <label class="block mb-1 font-medium text-gray-700 text-sm">Upload WAV File</label>
+          <input
+            type="file"
+            accept="audio/wav, audio/wave, audio/x-wav, audio/x-pn-wav"
+            (change)="onFileSelected($event)"
+            class="p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary w-full text-sm"
+          />
+        </div>
+
+        <!-- Generate button -->
+        <ion-button
+          class="rounded-lg font-medium text-base"
+          (click)="processFile()"
+          [disabled]="!selectedFile || isProcessing">
+          <ion-icon name="analytics-outline" slot="start"></ion-icon>
+          <span class="ml-2">{{ isProcessing ? 'Processing...' : 'Generate Mel Spectrogram' }}</span>
+          <ion-spinner *ngIf="isProcessing" slot="end" name="dots"></ion-spinner>
+        </ion-button>
+
+        <!-- Info messages -->
+        <div *ngIf="!selectedFile && !isProcessing" class="text-gray-500 text-sm text-center">
+          Please select a WAV file to generate a spectrogram.
+        </div>
+      </div>
+    </ion-card-content>
+  </ion-card>
+</ion-content>
